@@ -4,3 +4,4 @@
 {"ts":"2026-05-26T12:49:33.654Z","type":"issue_opened_accepted","user":"ashleytheash","issue":3005,"delta":0}
 {"ts":"2026-05-26T12:54:36.783Z","type":"issue_opened_accepted","user":"ashleytheash","issue":3006,"delta":0}
 {"ts":"2026-05-26T12:59:02.787Z","type":"issue_opened_accepted","user":"ashleytheash","issue":3007,"delta":0}
+{"ts":"2026-05-26T13:04:27.943Z","type":"pr_merged","user":"lefarcen","pr":2993,"delta":30,"promoted":"signal"}
