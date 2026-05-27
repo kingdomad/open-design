@@ -1016,7 +1016,15 @@ export interface AutomationsClickProps {
     | 'run_now'
     | 'open_artifact'
     | 'type_card'
-    | 'filter_tab';
+    | 'filter_tab'
+    | 'edit'
+    | 'pause'
+    | 'resume'
+    | 'delete'
+    | 'history'
+    | 'cancel'
+    | 'create'
+    | 'save';
   type_id?: 'orbit' | 'routines' | 'schedules' | 'live_artifacts';
   filter_id?: 'all' | 'scheduled' | 'running' | 'done';
 }
@@ -1076,6 +1084,20 @@ export interface PluginsSourcesTabClickProps {
   element: 'source_url_input' | 'add_source' | 'refresh' | 'remove';
   plugin_id?: string;
   plugin_type?: string;
+}
+
+export interface PluginDetailClickProps {
+  page_name: 'plugins';
+  area: 'plugin_detail';
+  element: 'back' | 'use_plugin';
+  plugin_id?: string;
+}
+
+export interface PluginLoopClickProps {
+  page_name: 'plugins';
+  area: 'plugin_loop';
+  element: 'clear_active' | 'submit' | 'card_details' | 'card_use';
+  plugin_id?: string;
 }
 
 // DESIGN SYSTEMS
@@ -1490,6 +1512,8 @@ export type UiClickProps =
   | PluginsTemplatesDropdownClickProps
   | PluginsAvailableTabClickProps
   | PluginsSourcesTabClickProps
+  | PluginDetailClickProps
+  | PluginLoopClickProps
   | DesignSystemsTopClickProps
   | DesignSystemsTemplateCardClickProps
   | DesignSystemsTemplatesModalClickProps

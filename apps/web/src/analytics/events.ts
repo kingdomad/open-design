@@ -36,6 +36,8 @@ import type {
   PluginsTemplatesDropdownClickProps,
   PluginsAvailableTabClickProps,
   PluginsSourcesTabClickProps,
+  PluginDetailClickProps,
+  PluginLoopClickProps,
   DesignSystemsTopClickProps,
   DesignSystemsTemplateCardClickProps,
   DesignSystemsTemplatesModalClickProps,
@@ -322,6 +324,20 @@ export function trackPluginsAvailableTabClick(
 export function trackPluginsSourcesTabClick(
   track: Track,
   props: PluginsSourcesTabClickProps,
+): void {
+  send(track, 'ui_click', props);
+}
+
+export function trackPluginDetailClick(
+  track: Track,
+  props: PluginDetailClickProps,
+): void {
+  send(track, 'ui_click', props);
+}
+
+export function trackPluginLoopClick(
+  track: Track,
+  props: PluginLoopClickProps,
 ): void {
   send(track, 'ui_click', props);
 }
