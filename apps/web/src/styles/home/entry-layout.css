@@ -1033,11 +1033,13 @@
   overflow: hidden;
 }
 .model-select-searchable__search-row {
-  padding: 8px;
+  padding: 6px;
   border-bottom: 1px solid var(--border);
 }
 .model-select-searchable__input {
+  display: block;
   width: 100%;
+  box-sizing: border-box;
 }
 .model-select-searchable__list {
   max-height: 280px;

@@ -273,7 +273,6 @@ export function AvatarMenu({
                         searchInputTestId="avatar-model-search"
                         popoverTestId="avatar-model-popover"
                         minSearchableOptions={5}
-                        popoverMinWidth={340}
                       />
                     </label>
                   ) : null}
@@ -344,7 +343,6 @@ export function AvatarMenu({
                   searchInputTestId="avatar-byok-model-search"
                   popoverTestId="avatar-byok-model-popover"
                   minSearchableOptions={5}
-                  popoverMinWidth={340}
                 />
               </label>
             </div>
