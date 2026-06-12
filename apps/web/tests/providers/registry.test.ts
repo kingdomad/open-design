@@ -5,6 +5,7 @@ import {
   cancelConnectorAuthorization,
   CLOUDFLARE_PAGES_PROVIDER_ID,
   connectConnector,
+  createServerDirectory,
   DEFAULT_DEPLOY_PROVIDER_ID,
   deployProjectFile,
   fetchAgentsStream,
@@ -19,10 +20,230 @@ import {
   fetchProjectFileText,
   fetchSkillExample,
   isDeployProviderId,
+  listServerDirectory,
+  listServerDirectoryRoots,
+  openFolderDialog,
+  openFolderDialogDetailed,
   updateDeployConfig,
   uploadProjectFiles,
   writeProjectTextFileDetailed,
 } from '../../src/providers/registry';
+
+describe('server folder registry helpers', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('returns the selected native folder path', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ path: '/workspace/project' }),
+      { status: 200 },
+    )));
+
+    await expect(openFolderDialogDetailed()).resolves.toEqual({
+      ok: true,
+      path: '/workspace/project',
+    });
+  });
+
+  it('reports a cancelled native folder dialog', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ path: null, error: 'cancelled' }),
+      { status: 200 },
+    )));
+
+    await expect(openFolderDialogDetailed()).resolves.toEqual({
+      ok: false,
+      reason: 'cancelled',
+    });
+  });
+
+  it('preserves native folder dialog execution failure detail', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ path: null, error: 'exec-failed', detail: 'cannot open display' }),
+      { status: 200 },
+    )));
+
+    await expect(openFolderDialogDetailed()).resolves.toEqual({
+      ok: false,
+      reason: 'exec-failed',
+      detail: 'cannot open display',
+    });
+  });
+
+  it('reports native folder dialog HTTP errors with status and JSON detail', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ error: 'cross-origin request rejected' }),
+      { status: 403, statusText: 'Forbidden' },
+    )));
+
+    await expect(openFolderDialogDetailed()).resolves.toEqual({
+      ok: false,
+      reason: 'http-error',
+      detail: 'cross-origin request rejected',
+      status: 403,
+    });
+  });
+
+  it('reports native folder dialog network errors', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error('daemon unavailable');
+    }));
+
+    await expect(openFolderDialogDetailed()).resolves.toEqual({
+      ok: false,
+      reason: 'network-error',
+      detail: 'daemon unavailable',
+    });
+  });
+
+  it('reports malformed native folder dialog JSON as an invalid response', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      'not-json',
+      { status: 200 },
+    )));
+
+    await expect(openFolderDialogDetailed()).resolves.toEqual({
+      ok: false,
+      reason: 'http-error',
+      detail: 'Invalid folder dialog response.',
+      status: 200,
+    });
+  });
+
+  it('reports unknown native folder dialog payloads as invalid responses', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ path: null, error: 'unexpected' }),
+      { status: 200 },
+    )));
+
+    await expect(openFolderDialogDetailed()).resolves.toEqual({
+      ok: false,
+      reason: 'http-error',
+      detail: 'Invalid folder dialog response.',
+      status: 200,
+    });
+  });
+
+  it('reports null native folder dialog payloads as invalid responses', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify(null),
+      { status: 200 },
+    )));
+
+    await expect(openFolderDialogDetailed()).resolves.toEqual({
+      ok: false,
+      reason: 'http-error',
+      detail: 'Invalid folder dialog response.',
+      status: 200,
+    });
+  });
+
+  it('keeps the nullable open folder compatibility wrapper', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ path: '/workspace/project' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ path: null, error: 'cancelled' }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(openFolderDialog()).resolves.toBe('/workspace/project');
+    await expect(openFolderDialog()).resolves.toBeNull();
+  });
+
+  it('lists server directory roots', async () => {
+    const response = {
+      roots: [{ label: 'Home', path: '/home/user', kind: 'home' }],
+    };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(response), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(listServerDirectoryRoots()).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith('/api/fs-browser/roots');
+  });
+
+  it('throws useful server directory roots errors', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ error: 'PATH_ACCESS_DENIED', message: 'roots are unavailable' }),
+      { status: 403 },
+    )));
+
+    await expect(listServerDirectoryRoots()).rejects.toThrow('roots are unavailable');
+  });
+
+  it('reads nested API errors through server directory roots', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ error: { code: 'ROOTS_FAILED', message: 'nested roots failure' } }),
+      { status: 500, statusText: 'Internal Server Error' },
+    )));
+
+    await expect(listServerDirectoryRoots()).rejects.toThrow('nested roots failure');
+  });
+
+  it('reads string API errors through server directory roots', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ error: 'string roots failure' }),
+      { status: 500, statusText: 'Internal Server Error' },
+    )));
+
+    await expect(listServerDirectoryRoots()).rejects.toThrow('string roots failure');
+  });
+
+  it('keeps status-bearing fallbacks for non-JSON API errors', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      'not-json',
+      { status: 403, statusText: 'Forbidden' },
+    )));
+
+    await expect(listServerDirectoryRoots()).rejects.toThrow('Request failed (403 Forbidden).');
+  });
+
+  it('encodes paths when listing a server directory', async () => {
+    const response = {
+      path: '/home/user/My Project',
+      parent: '/home/user',
+      entries: [{ name: 'src', path: '/home/user/My Project/src', type: 'directory', hidden: false }],
+      truncated: false,
+    };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(response), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(listServerDirectory('/home/user/My Project')).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith('/api/fs-browser/list?path=%2Fhome%2Fuser%2FMy%20Project');
+  });
+
+  it('creates a server directory', async () => {
+    const response = { path: '/workspace/new-folder' };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(response), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(createServerDirectory('/workspace', 'new-folder')).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith('/api/fs-browser/mkdir', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parentPath: '/workspace', name: 'new-folder' }),
+    });
+  });
+
+  it('surfaces server directory creation errors', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ error: 'NAME_INVALID', message: 'directory name must be a single path segment' }),
+      { status: 400, headers: { 'content-type': 'application/json' } },
+    )));
+
+    await expect(createServerDirectory('/workspace', '../escape')).rejects.toThrow(
+      'directory name must be a single path segment',
+    );
+  });
+
+  it('throws useful server directory listing errors', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ error: 'PATH_NOT_FOUND', message: 'directory does not exist' }),
+      { status: 404 },
+    )));
+
+    await expect(listServerDirectory('/missing')).rejects.toThrow('directory does not exist');
+  });
+});
 
 function agentStreamResponse(text: string): Response {
   const encoder = new TextEncoder();

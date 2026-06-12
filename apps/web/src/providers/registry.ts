@@ -6,6 +6,10 @@ import type {
   ConnectorDetailResponse,
   ConnectorListResponse,
   ConnectorStatusResponse,
+  FsBrowserListResponse,
+  FsBrowserMkdirResponse,
+  FsBrowserRootsResponse,
+  NativeFolderDialogResponse,
   ImportGitHubDesignSystemRequest,
   ImportGitHubDesignSystemResponse,
   ImportShadcnDesignSystemRequest,
@@ -1591,15 +1595,23 @@ export async function deleteLiveArtifact(projectId: string, artifactId: string):
 }
 
 async function readApiErrorBody(resp: Response): Promise<{ message: string; code?: string }> {
+  const fallbackMessage = `Request failed (${resp.status}${resp.statusText ? ` ${resp.statusText}` : ''}).`;
   try {
-    const json = (await resp.json()) as { error?: { code?: string; message?: string }; message?: string };
-    const message = json.error?.message ?? json.message;
+    const json = (await resp.json()) as {
+      error?: string | { code?: string; message?: string };
+      message?: string;
+    };
+    const message = typeof json.error === 'string'
+      ? json.message ?? json.error
+      : json.error?.message ?? json.message;
     return {
-      message: typeof message === 'string' && message.length > 0 ? message : `Request failed (${resp.status}).`,
-      ...(typeof json.error?.code === 'string' ? { code: json.error.code } : {}),
+      message: typeof message === 'string' && message.length > 0 ? message : fallbackMessage,
+      ...(typeof json.error === 'object' && typeof json.error?.code === 'string'
+        ? { code: json.error.code }
+        : {}),
     };
   } catch {
-    return { message: `Request failed (${resp.status}).` };
+    return { message: fallbackMessage };
   }
 }
 
@@ -2001,15 +2013,113 @@ export async function renameProjectFile(
   return (await resp.json()) as RenameProjectFileResponse;
 }
 
-export async function openFolderDialog(): Promise<string | null> {
+export type OpenFolderDialogDetailedResult =
+  | { ok: true; path: string }
+  | { ok: false; reason: 'cancelled' }
+  | {
+    ok: false;
+    reason: 'exec-failed' | 'http-error' | 'network-error';
+    detail: string;
+    status?: number;
+  };
+
+export async function openFolderDialogDetailed(): Promise<OpenFolderDialogDetailedResult> {
+  let resp: Response;
   try {
-    const resp = await fetch('/api/dialog/open-folder', { method: 'POST' });
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    return typeof data.path === 'string' && data.path.length > 0 ? data.path : null;
-  } catch {
-    return null;
+    resp = await fetch('/api/dialog/open-folder', { method: 'POST' });
+  } catch (error) {
+    return {
+      ok: false,
+      reason: 'network-error',
+      detail: error instanceof Error ? error.message : String(error),
+    };
   }
+
+  if (!resp.ok) {
+    const errorBody = await readApiErrorBody(resp);
+    return {
+      ok: false,
+      reason: 'http-error',
+      detail: errorBody.message,
+      status: resp.status,
+    };
+  }
+
+  let data: NativeFolderDialogResponse;
+  try {
+    data = (await resp.json()) as NativeFolderDialogResponse;
+  } catch {
+    return {
+      ok: false,
+      reason: 'http-error',
+      detail: 'Invalid folder dialog response.',
+      status: resp.status,
+    };
+  }
+
+  if (data === null || typeof data !== 'object') {
+    return {
+      ok: false,
+      reason: 'http-error',
+      detail: 'Invalid folder dialog response.',
+      status: resp.status,
+    };
+  }
+
+  if (typeof data.path === 'string' && data.path.length > 0) {
+    return { ok: true, path: data.path };
+  }
+  if (data.path === null && data.error === 'cancelled') {
+    return { ok: false, reason: 'cancelled' };
+  }
+  if (data.path === null && data.error === 'exec-failed' && typeof data.detail === 'string') {
+    return { ok: false, reason: 'exec-failed', detail: data.detail };
+  }
+  return {
+    ok: false,
+    reason: 'http-error',
+    detail: 'Invalid folder dialog response.',
+    status: resp.status,
+  };
+}
+
+export async function openFolderDialog(): Promise<string | null> {
+  const result = await openFolderDialogDetailed();
+  return result.ok ? result.path : null;
+}
+
+export async function listServerDirectoryRoots(): Promise<FsBrowserRootsResponse> {
+  const resp = await fetch('/api/fs-browser/roots');
+  if (!resp.ok) {
+    const errorBody = await readApiErrorBody(resp);
+    throw new Error(errorBody.message);
+  }
+  return (await resp.json()) as FsBrowserRootsResponse;
+}
+
+export async function listServerDirectory(path: string): Promise<FsBrowserListResponse> {
+  const resp = await fetch(`/api/fs-browser/list?path=${encodeURIComponent(path)}`);
+  if (!resp.ok) {
+    const errorBody = await readApiErrorBody(resp);
+    throw new Error(errorBody.message);
+  }
+  return (await resp.json()) as FsBrowserListResponse;
+}
+
+export async function createServerDirectory(
+  parentPath: string,
+  name: string,
+): Promise<FsBrowserMkdirResponse> {
+  const resp = await fetch('/api/fs-browser/mkdir', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ parentPath, name }),
+  });
+  if (!resp.ok) {
+    const errorBody = await readApiErrorBody(resp);
+    throw new Error(errorBody.message);
+  }
+  return (await resp.json()) as FsBrowserMkdirResponse;
 }
 
 // Probe whether a local directory still exists on disk. Used by the composer

@@ -109,7 +109,11 @@ import {
 } from './skills.js';
 import { validateLinkedDirs } from './linked-dirs.js';
 import { installFromTarget, uninstallById, sanitizeRepoName } from './library-install.js';
-import { buildWindowsFolderDialogCommand, parseFolderDialogStdout } from './native-folder-dialog.js';
+import {
+  buildWindowsFolderDialogCommand,
+  classifyNativeFolderDialogResult,
+  type NativeFolderDialogResult,
+} from './native-folder-dialog.js';
 import { listCodexPets, readCodexPetSpritesheet } from './codex-pets.js';
 import {
   AssetCacheError,
@@ -472,6 +476,7 @@ import { LiveArtifactRefreshAbortError } from './live-artifacts/refresh.js';
 import { registerConnectorRoutes } from './connectors/routes.js';
 import { registerActiveContextRoutes } from './routes/active-context.js';
 import { registerHostToolsRoutes } from './routes/host-tools.js';
+import { registerFsBrowserRoutes } from './routes/fs-browser.js';
 import { registerMcpRoutes } from './mcp-routes.js';
 import { registerXaiRoutes } from './routes/xai.js';
 import { registerLiveArtifactRoutes } from './routes/live-artifact.js';
@@ -3812,7 +3817,7 @@ function requestRunOverride(runId, tokenRunId) {
   return typeof runId === 'string' && runId.length > 0 && runId !== tokenRunId;
 }
 
-function openNativeFolderDialog() {
+function openNativeFolderDialog(): Promise<NativeFolderDialogResult> {
   return new Promise((resolve) => {
     const platform = process.platform;
     if (platform === 'darwin') {
@@ -3826,10 +3831,8 @@ function openNativeFolderDialog() {
         'osascript',
         ['-e', 'POSIX path of (choose folder with prompt "Select a code folder to link")'],
         { timeout: 120_000 },
-        (err, stdout) => {
-          if (err) return resolve(null);
-          const p = stdout.trim().replace(/\/$/, '');
-          resolve(p || null);
+        (err, stdout, stderr) => {
+          resolve(classifyNativeFolderDialogResult('darwin', err, stdout, stderr));
         },
       );
     } else if (platform === 'linux') {
@@ -3837,19 +3840,17 @@ function openNativeFolderDialog() {
         'zenity',
         ['--file-selection', '--directory', '--title=Select a code folder to link'],
         { timeout: 120_000 },
-        (err, stdout) => {
-          if (err) return resolve(null);
-          const p = stdout.trim();
-          resolve(p || null);
+        (err, stdout, stderr) => {
+          resolve(classifyNativeFolderDialogResult('linux', err, stdout, stderr));
         },
       );
     } else if (platform === 'win32') {
       const command = buildWindowsFolderDialogCommand();
-      execFile(command.command, command.args, { timeout: 120_000 }, (err, stdout) => {
-        resolve(parseFolderDialogStdout(err, stdout));
+      execFile(command.command, command.args, { timeout: 120_000 }, (err, stdout, stderr) => {
+        resolve(classifyNativeFolderDialogResult('win32', err, stdout, stderr));
       });
     } else {
-      resolve(null);
+      resolve({ ok: false, reason: 'cancelled' });
     }
   });
 }
@@ -6113,6 +6114,11 @@ export async function startServer({
     paths: pathDeps,
     projectStore: projectStoreDeps,
     projectFiles: projectFileDeps,
+  });
+  registerFsBrowserRoutes(app, {
+    cwd: PROJECT_ROOT,
+    homedir: os.homedir(),
+    http: httpDeps,
   });
   registerSocialShareRoutes(app, { http: httpDeps });
   registerProjectRoutes(app, {
@@ -10510,21 +10516,6 @@ export async function startServer({
       res
         .status(500)
         .json({ ok: false, error: String(err && err.message ? err.message : err) });
-    }
-  });
-
-	  // Native OS folder picker dialog. Returns { path: string | null }.
-	  app.post('/api/dialog/open-folder', async (req, res) => {
-	    if (!isLocalSameOrigin(req, resolvedPort)) {
-      return res.status(403).json({ error: 'cross-origin request rejected' });
-    }
-    try {
-      const selected = await openNativeFolderDialog();
-      res.json({ path: selected });
-    } catch (err) {
-      res
-        .status(500)
-        .json({ error: String(err && err.message ? err.message : err) });
     }
   });
 

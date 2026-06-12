@@ -51,7 +51,7 @@ import {
   mergeAihubmixImageModels,
   useAIHubMixImageModels,
 } from '../media/aihubmix-image-models';
-import { openFolderDialog, fetchRecentLinkedDirs, pushRecentLinkedDir } from '../providers/registry';
+import { openFolderDialogDetailed, fetchRecentLinkedDirs, pushRecentLinkedDir } from '../providers/registry';
 import { isOpenDesignHostAvailable, pickHostWorkingDir } from '@open-design/host';
 import type {
   DesignSystemSummary,
@@ -88,6 +88,7 @@ import type { PluginUseAction } from './plugins-home/useActions';
 import { examplePresetSeedPrompt } from './plugins-home/presetSeedPrompt';
 import { localizePluginDescription } from './plugins-home/localization';
 import { RecentProjectsStrip } from './RecentProjectsStrip';
+import { ServerDirectoryPicker } from './ServerDirectoryPicker';
 import { AnimatePresence } from 'motion/react';
 
 export interface ActivePlugin {
@@ -270,6 +271,7 @@ export function HomeView({
   const [selectedConnectorContexts, setSelectedConnectorContexts] = useState<SelectedConnectorContext[]>([]);
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
   const [workingDir, setWorkingDir] = useState<string | null>(null);
+  const [serverWorkingDirPickerOpen, setServerWorkingDirPickerOpen] = useState(false);
   // Token paired with `workingDir` when picked through the desktop host's
   // native dialog. Spent on the post-creation working-dir POST so the
   // daemon's desktop-auth gate accepts the path. Null for web picks.
@@ -294,6 +296,11 @@ export function HomeView({
     const persisted = await pushRecentLinkedDir(dir);
     setRecentDirs(persisted);
   }, []);
+  const selectWorkingDir = useCallback((dir: string) => {
+    setWorkingDir(dir);
+    setWorkingDirToken(null);
+    void rememberRecentDir(dir);
+  }, [rememberRecentDir]);
   const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]);
   const [mcpLoading, setMcpLoading] = useState(true);
   const [prompt, setPrompt] = useState('');
@@ -1129,11 +1136,13 @@ export function HomeView({
     }
     // Pure web path: no desktop host, so there is no token gate — the raw
     // browser folder path is the expected, working input.
-    const picked = await openFolderDialog();
-    if (picked) {
-      setWorkingDir(picked);
-      setWorkingDirToken(null);
-      void rememberRecentDir(picked);
+    const picked = await openFolderDialogDetailed();
+    if (picked.ok) {
+      selectWorkingDir(picked.path);
+      return;
+    }
+    if (picked.reason === 'exec-failed') {
+      setServerWorkingDirPickerOpen(true);
     }
   }
 
@@ -1633,11 +1642,7 @@ export function HomeView({
         recentDirs={recentDirs}
         onPickWorkingDir={handlePickWorkingDir}
         onSelectRecentWorkingDir={(dir) => {
-          setWorkingDir(dir);
-          // Recents come from the browser-side picker only; they carry no
-          // desktop trust token (and linkedDirs don't need one).
-          setWorkingDirToken(null);
-          void rememberRecentDir(dir);
+          selectWorkingDir(dir);
         }}
         onClearWorkingDir={() => {
           setWorkingDir(null);
@@ -1811,6 +1816,15 @@ export function HomeView({
           </div>
         </div>
       ) : null}
+      <ServerDirectoryPicker
+        open={serverWorkingDirPickerOpen}
+        initialPath={workingDir ?? undefined}
+        onClose={() => setServerWorkingDirPickerOpen(false)}
+        onSelect={(dir) => {
+          selectWorkingDir(dir);
+          setServerWorkingDirPickerOpen(false);
+        }}
+      />
     </div>
   );
 }

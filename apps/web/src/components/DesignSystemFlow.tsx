@@ -14,7 +14,7 @@ import {
   fetchProjectFiles,
   fetchProjectDesignSystemPackageAudit,
   fetchDesignSystemRevisions,
-  openFolderDialog,
+  openFolderDialogDetailed,
   startDesignSystemTokenContractRebuildJob,
   updateDesignSystemRevisionStatus,
   updateDesignSystemDraft,
@@ -69,6 +69,7 @@ import { connectorAuthSnapshotChanged } from './connectors-state';
 import { FileWorkspace } from './FileWorkspace';
 import { Icon, type IconName } from './Icon';
 import { Spinner } from './Loading';
+import { ServerDirectoryPicker } from './ServerDirectoryPicker';
 import { useAnalytics } from '../analytics/provider';
 import {
   trackDesignSystemCreateResult,
@@ -307,6 +308,7 @@ export function DesignSystemCreationFlow({
 }: CreationProps) {
   const [step, setStep] = useState<SetupStep>('setup');
   const [state, setState] = useState<SetupState>(EMPTY_SETUP);
+  const [serverCodeFolderPickerOpen, setServerCodeFolderPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generationStarting, setGenerationStarting] = useState(false);
   const [sourceProcessingCount, setSourceProcessingCount] = useState(0);
@@ -538,14 +540,23 @@ export function DesignSystemCreationFlow({
     };
   }
 
-  async function handlePickCodeFolder() {
-    emitCreateFormClick('browse_folder');
-    const selected = await openFolderDialog();
-    if (!selected) return;
+  function addCodeFolder(selected: string) {
     setState((curr) => ({
       ...curr,
       codeFolders: Array.from(new Set([...curr.codeFolders, selected])),
     }));
+  }
+
+  async function handlePickCodeFolder() {
+    emitCreateFormClick('browse_folder');
+    const selected = await openFolderDialogDetailed();
+    if (selected.ok) {
+      addCodeFolder(selected.path);
+      return;
+    }
+    if (selected.reason === 'exec-failed') {
+      setServerCodeFolderPickerOpen(true);
+    }
   }
 
   function handleRemoveCodeFolder(folder: string) {
@@ -936,6 +947,14 @@ export function DesignSystemCreationFlow({
           </div>
         ) : null}
       </main>
+      <ServerDirectoryPicker
+        open={serverCodeFolderPickerOpen}
+        onClose={() => setServerCodeFolderPickerOpen(false)}
+        onSelect={(dir) => {
+          addCodeFolder(dir);
+          setServerCodeFolderPickerOpen(false);
+        }}
+      />
     </div>
   );
 }

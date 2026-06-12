@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import type { Express } from 'express';
-import type { MediaExecutionPolicy } from '@open-design/contracts';
+import type { MediaExecutionPolicy, NativeFolderDialogResponse } from '@open-design/contracts';
 import { defaultMediaExecutionPolicy, mediaPolicyDenial } from './media-policy.js';
 import type { RouteDeps } from './server-context.js';
 import { proxyDispatcherRequestInit } from './connectionTest.js';
@@ -445,14 +445,23 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
     }
   });
 
-  // Native OS folder picker dialog. Returns { path: string | null }.
+  // Native OS folder picker dialog.
   app.post('/api/dialog/open-folder', async (req, res) => {
     if (!isLocalSameOrigin(req, getResolvedPort())) {
       return res.status(403).json({ error: 'cross-origin request rejected' });
     }
     try {
-      const selected = await openNativeFolderDialog();
-      res.json({ path: selected });
+      const result = await openNativeFolderDialog();
+      if (result.ok) {
+        const responseBody: NativeFolderDialogResponse = { path: result.path };
+        return res.json(responseBody);
+      }
+      const responseBody: NativeFolderDialogResponse = {
+        path: null,
+        error: result.reason,
+        ...('detail' in result ? { detail: result.detail } : {}),
+      };
+      res.json(responseBody);
     } catch (err: any) {
       res
         .status(500)

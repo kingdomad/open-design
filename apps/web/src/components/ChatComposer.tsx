@@ -33,8 +33,9 @@ import type {
   DesignToolboxClickProps,
 } from '@open-design/contracts/analytics';
 import { deriveUploadCohort } from '../analytics/upload-tracking';
-import { projectRawUrl, uploadProjectFiles, openFolderDialog, fetchRecentLinkedDirs, pushRecentLinkedDir, dirExists } from "../providers/registry";
+import { projectRawUrl, uploadProjectFiles, openFolderDialogDetailed, fetchRecentLinkedDirs, pushRecentLinkedDir, dirExists } from "../providers/registry";
 import { WorkingDirPicker } from './WorkingDirPicker';
+import { ServerDirectoryPicker } from './ServerDirectoryPicker';
 import { patchProject } from "../state/projects";
 import { fetchMcpServers } from "../state/mcp";
 import type { McpServerConfig, McpTemplate } from "../state/mcp";
@@ -477,6 +478,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     // (via `linkedDirs` → `--add-dir`). Shown in the WorkingDirPicker below
     // the input, mirroring Home. We treat it as a single primary folder.
     const workingDir = linkedDirs[0] ?? null;
+    const [serverWorkingDirPickerOpen, setServerWorkingDirPickerOpen] = useState(false);
+    const [serverFolderPickerMode, setServerFolderPickerMode] = useState<'working-dir' | 'link-folder'>('working-dir');
     const [recentDirs, setRecentDirs] = useState<string[]>([]);
     useEffect(() => {
       let cancelled = false;
@@ -1585,16 +1588,27 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       if (files.length > 0) void uploadFiles(files);
     }
 
-    async function handleLinkFolder() {
+    async function addLinkedFolder(selected: string) {
       if (!projectId) return;
-      const selected = await openFolderDialog();
-      if (!selected) return;
       const base = projectMetadata ?? { kind: 'prototype' as const };
       const existing = base.linkedDirs ?? [];
       if (existing.includes(selected)) return;
       const metadata: ProjectMetadata = { ...base, linkedDirs: [...existing, selected] };
       const result = await patchProject(projectId, { metadata });
       if (result?.metadata) onProjectMetadataChange?.(result.metadata);
+    }
+
+    async function handleLinkFolder() {
+      if (!projectId) return;
+      const selected = await openFolderDialogDetailed();
+      if (selected.ok) {
+        await addLinkedFolder(selected.path);
+        return;
+      }
+      if (selected.reason === 'exec-failed') {
+        setServerFolderPickerMode('link-folder');
+        setServerWorkingDirPickerOpen(true);
+      }
     }
 
     // The WorkingDirPicker treats the project's working directory as a single
@@ -1619,8 +1633,15 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       void rememberRecentDir(dir);
     }
     async function handlePickWorkingDir() {
-      const selected = await openFolderDialog();
-      if (selected) await setWorkingDirFolder(selected);
+      const selected = await openFolderDialogDetailed();
+      if (selected.ok) {
+        await setWorkingDirFolder(selected.path);
+        return;
+      }
+      if (selected.reason === 'exec-failed') {
+        setServerFolderPickerMode('working-dir');
+        setServerWorkingDirPickerOpen(true);
+      }
     }
     async function clearWorkingDir() {
       if (!projectId) return;
@@ -2492,6 +2513,19 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             hideUseAction
           />
         ) : null}
+        <ServerDirectoryPicker
+          open={serverWorkingDirPickerOpen}
+          initialPath={workingDir ?? undefined}
+          onClose={() => setServerWorkingDirPickerOpen(false)}
+          onSelect={(dir) => {
+            if (serverFolderPickerMode === 'link-folder') {
+              void addLinkedFolder(dir);
+            } else {
+              void setWorkingDirFolder(dir);
+            }
+            setServerWorkingDirPickerOpen(false);
+          }}
+        />
       </div>
     );
   }

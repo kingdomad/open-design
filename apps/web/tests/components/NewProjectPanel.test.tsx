@@ -10,7 +10,7 @@ import {
   defaultDesignSystemSelection,
   NewProjectPanel,
 } from '../../src/components/NewProjectPanel';
-import { openFolderDialog } from '../../src/providers/registry';
+import { openFolderDialogDetailed } from '../../src/providers/registry';
 import type { DesignSystemSummary, ProjectTemplate, SkillSummary } from '../../src/types';
 
 vi.mock('@open-design/host', async () => {
@@ -28,13 +28,13 @@ vi.mock('../../src/providers/registry', async () => {
   );
   return {
     ...actual,
-    openFolderDialog: vi.fn(),
+    openFolderDialogDetailed: vi.fn(),
   };
 });
 
 const mockedIsHostAvailable = vi.mocked(isOpenDesignHostAvailable);
 const mockedPickHostWorkingDir = vi.mocked(pickHostWorkingDir);
-const mockedOpenFolderDialog = vi.mocked(openFolderDialog);
+const mockedOpenFolderDialog = vi.mocked(openFolderDialogDetailed);
 
 const skills: SkillSummary[] = [
   {
@@ -116,7 +116,7 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   vi.clearAllMocks();
   mockedIsHostAvailable.mockReturnValue(false);
-  mockedOpenFolderDialog.mockResolvedValue(null);
+  mockedOpenFolderDialog.mockResolvedValue({ ok: false, reason: 'cancelled' });
 });
 
 describe('NewProjectPanel design system defaults', () => {
@@ -701,7 +701,7 @@ describe('NewProjectPanel working directory picker', () => {
   it('includes a browser-picked working directory in the create payload', async () => {
     const onCreate = vi.fn();
     mockedIsHostAvailable.mockReturnValue(false);
-    mockedOpenFolderDialog.mockResolvedValue('/Users/me/product-designs');
+    mockedOpenFolderDialog.mockResolvedValue({ ok: true, path: '/Users/me/product-designs' });
 
     render(
       <NewProjectPanel
@@ -828,15 +828,7 @@ describe('NewProjectPanel folder import feedback', () => {
 
   it('shows an error when folder picker import rejects with a daemon message', async () => {
     const onImportFolder = vi.fn().mockRejectedValue(new Error('folder not found'));
-    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (url) => {
-      if (typeof url === 'string' && url === '/api/dialog/open-folder') {
-        return new Response(
-          JSON.stringify({ path: '/missing/project' }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }
-      throw new Error(`unexpected fetch ${url}`);
-    }));
+    mockedOpenFolderDialog.mockResolvedValue({ ok: true, path: '/missing/project' });
 
     render(
       <NewProjectPanel

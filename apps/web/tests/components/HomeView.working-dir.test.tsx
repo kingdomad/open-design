@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { HomeView } from '../../src/components/HomeView';
 import { isOpenDesignHostAvailable, pickHostWorkingDir } from '@open-design/host';
-import { openFolderDialog } from '../../src/providers/registry';
+import { openFolderDialogDetailed } from '../../src/providers/registry';
 
 vi.mock('@open-design/host', async () => {
   const actual = await vi.importActual<typeof import('@open-design/host')>('@open-design/host');
@@ -22,14 +22,14 @@ vi.mock('../../src/providers/registry', async () => {
   );
   return {
     ...actual,
-    openFolderDialog: vi.fn(),
+    openFolderDialogDetailed: vi.fn(),
     fetchProjectFiles: vi.fn().mockResolvedValue([]),
   };
 });
 
 const mockedIsHostAvailable = vi.mocked(isOpenDesignHostAvailable);
 const mockedPickHostWorkingDir = vi.mocked(pickHostWorkingDir);
-const mockedOpenFolderDialog = vi.mocked(openFolderDialog);
+const mockedOpenFolderDialog = vi.mocked(openFolderDialogDetailed);
 
 function renderHome() {
   return render(
@@ -45,7 +45,7 @@ function renderHome() {
 describe('HomeView working-dir picker host fallback', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedOpenFolderDialog.mockResolvedValue(null);
+    mockedOpenFolderDialog.mockResolvedValue({ ok: false, reason: 'cancelled' });
   });
 
   afterEach(() => {
@@ -80,7 +80,7 @@ describe('HomeView working-dir picker host fallback', () => {
   // folder path is the expected input and the dialog fallback is correct.
   it('uses the browser folder dialog on the pure web path', async () => {
     mockedIsHostAvailable.mockReturnValue(false);
-    mockedOpenFolderDialog.mockResolvedValue('/Users/me/web-folder');
+    mockedOpenFolderDialog.mockResolvedValue({ ok: true, path: '/Users/me/web-folder' });
 
     renderHome();
 

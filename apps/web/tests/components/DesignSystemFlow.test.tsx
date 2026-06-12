@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => ({
   fetchProjectDesignSystemPackageAudit: vi.fn(),
   fetchProjectFiles: vi.fn(),
   getProject: vi.fn(),
-  openFolderDialog: vi.fn(),
+  openFolderDialogDetailed: vi.fn(),
   patchProject: vi.fn(),
   createConversation: vi.fn(),
   listConversations: vi.fn(),
@@ -94,7 +94,7 @@ vi.mock('../../src/providers/registry', async () => {
     fetchProjectDesignSystemPackageAudit: mocks.fetchProjectDesignSystemPackageAudit,
     fetchProjectFiles: mocks.fetchProjectFiles,
     fetchConnectorStatuses: mocks.fetchConnectorStatuses,
-    openFolderDialog: mocks.openFolderDialog,
+    openFolderDialogDetailed: mocks.openFolderDialogDetailed,
     uploadProjectFile: mocks.uploadProjectFile,
     writeProjectTextFile: mocks.writeProjectTextFile,
   };
@@ -141,7 +141,7 @@ beforeEach(() => {
   mocks.saveMessage.mockResolvedValue(null);
   mocks.saveTabs.mockResolvedValue(null);
   mocks.streamViaDaemon.mockImplementation(async () => {});
-  mocks.openFolderDialog.mockResolvedValue(null);
+  mocks.openFolderDialogDetailed.mockResolvedValue({ ok: false, reason: 'cancelled' });
   mocks.uploadProjectFile.mockImplementation(async (_projectId: string, file: File, desiredName?: string) => ({
     name: desiredName ?? file.name,
     size: file.size,
@@ -873,7 +873,7 @@ describe('DesignSystemCreationFlow', () => {
     mocks.createDesignSystemDraft.mockResolvedValue(system);
     mocks.ensureDesignSystemWorkspace.mockResolvedValue({ project, files: [] });
     mocks.patchProject.mockResolvedValue({ ...project, pendingPrompt: 'Create this project as a design system.' });
-    mocks.openFolderDialog.mockResolvedValue('/Users/qingyu/work/comfyui');
+    mocks.openFolderDialogDetailed.mockResolvedValue({ ok: true, path: '/Users/qingyu/work/comfyui' });
 
     render(
       <DesignSystemCreationFlow

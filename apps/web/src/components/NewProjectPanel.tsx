@@ -18,7 +18,7 @@ import type {
 
 import { useT } from '../i18n';
 import type { Dict } from '../i18n/types';
-import { fetchPromptTemplate, openFolderDialog } from '../providers/registry';
+import { fetchPromptTemplate, openFolderDialogDetailed } from '../providers/registry';
 import { isStoredMediaProviderEntryPresent } from '../state/config';
 import { isMediaProviderPickerReady } from '../media/provider-readiness';
 import type {
@@ -57,6 +57,7 @@ import { Icon } from './Icon';
 import { Skeleton } from './Loading';
 import { Toast } from './Toast';
 import { useOpenFolderImport } from './useOpenFolderImport';
+import { ServerDirectoryPicker } from './ServerDirectoryPicker';
 
 // Snapshot of a curated prompt template, captured at New Project time and
 // folded into ProjectMetadata.promptTemplate. The user may have edited the
@@ -281,6 +282,7 @@ export function NewProjectPanel({
   const [workingDir, setWorkingDir] = useState<string | null>(null);
   const [workingDirToken, setWorkingDirToken] = useState<string | null>(null);
   const [workingDirPicking, setWorkingDirPicking] = useState(false);
+  const [serverWorkingDirPickerOpen, setServerWorkingDirPickerOpen] = useState(false);
   const [workingDirError, setWorkingDirError] = useState<
     { message: string; details?: string } | null
   >(null);
@@ -741,10 +743,14 @@ export function NewProjectPanel({
         });
         return;
       }
-      const picked = await openFolderDialog();
-      if (picked) {
-        setWorkingDir(picked);
+      const picked = await openFolderDialogDetailed();
+      if (picked.ok) {
+        setWorkingDir(picked.path);
         setWorkingDirToken(null);
+        return;
+      }
+      if (picked.reason === 'exec-failed') {
+        setServerWorkingDirPickerOpen(true);
       }
     } finally {
       setWorkingDirPicking(false);
@@ -779,6 +785,7 @@ export function NewProjectPanel({
     onImportFolder,
     onImportFolderResponse,
   });
+  const [serverFolderPickerOpen, setServerFolderPickerOpen] = useState(false);
 
   return (
     <div className="newproj" data-testid="new-project-panel">
@@ -1081,7 +1088,11 @@ export function NewProjectPanel({
               type="button"
               className="ghost newproj-import"
               disabled={folderImport.importing}
-              onClick={() => void folderImport.openFolder()}
+              onClick={() => {
+                void folderImport.openFolder().then((result) => {
+                  if (result === 'server-fallback') setServerFolderPickerOpen(true);
+                });
+              }}
             >
               <Icon name="folder" size={13} />
               <span>{folderImport.importing ? 'Opening...' : 'Open folder'}</span>
@@ -1090,6 +1101,24 @@ export function NewProjectPanel({
         ) : null}
       </div>
       <div className="newproj-footer">{t('newproj.privacyFooter')}</div>
+      <ServerDirectoryPicker
+        open={serverFolderPickerOpen}
+        onClose={() => setServerFolderPickerOpen(false)}
+        onSelect={(dir) => {
+          void folderImport.importFolderPath(dir);
+          setServerFolderPickerOpen(false);
+        }}
+      />
+      <ServerDirectoryPicker
+        open={serverWorkingDirPickerOpen}
+        initialPath={workingDir ?? undefined}
+        onClose={() => setServerWorkingDirPickerOpen(false)}
+        onSelect={(dir) => {
+          setWorkingDir(dir);
+          setWorkingDirToken(null);
+          setServerWorkingDirPickerOpen(false);
+        }}
+      />
       {importZipError ? (
         <Toast
           message={importZipError.message}
